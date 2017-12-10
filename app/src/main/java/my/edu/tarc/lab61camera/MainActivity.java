@@ -1,6 +1,9 @@
 package my.edu.tarc.lab61camera;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
@@ -12,12 +15,14 @@ import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 import static android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE;
@@ -25,15 +30,17 @@ import static android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;
 
 public class MainActivity extends AppCompatActivity {
     private static final int CAMERA_CAPTURE_IMAGE_REQUEST_CODE = 1;
-    private static final String IMAGE_DIRECTORY_NAME = "MMSR";
+    private static final String IMAGE_DIRECTORY_NAME = "my.edu.tarc.lab61camera";
+    private static final int OPEN_FILE_REQUEST_CODE = 2;
     private Uri fileUri;
     private String imageCaptured;
-
+    private ImageView imageViewPhoto;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        imageViewPhoto = (ImageView)findViewById(R.id.imageViewPhoto);
         Button buttonCamera = (Button) findViewById(R.id.buttonCamera);
         buttonCamera.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -41,6 +48,31 @@ public class MainActivity extends AppCompatActivity {
                 captureImage();
             }
         });
+
+        Button buttonFile = (Button) findViewById(R.id.buttonFile);
+        buttonFile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("image/*");
+
+                if (isAvailable(getApplicationContext(), intent)) {
+                    startActivityForResult(intent, OPEN_FILE_REQUEST_CODE);
+                } else {
+                    Toast.makeText(getApplicationContext(), "No Intent available to handle action", Toast.LENGTH_SHORT).show();
+                }
+
+            }
+        });
+    }
+
+    public static boolean isAvailable(Context ctx, Intent intent) {
+        final PackageManager mgr = ctx.getPackageManager();
+        List<ResolveInfo> list =
+                mgr.queryIntentActivities(intent,
+                        PackageManager.MATCH_DEFAULT_ONLY);
+        return list.size() > 0;
     }
 
     private void captureImage() {
@@ -105,8 +137,12 @@ public class MainActivity extends AppCompatActivity {
             if (resultCode == RESULT_OK) {
                 // successfully captured the image
                 // display it in image view
-                imageCaptured = saveCapturedImage();
-
+                String file = saveCapturedImage();
+                if(file != null){
+                    imageViewPhoto.setImageURI(fileUri);
+                }else{
+                    imageViewPhoto.setImageResource(R.drawable.ic_image_black_24dp);
+                }
 
             } else if (resultCode == RESULT_CANCELED) {
                 // user cancelled Image capture
@@ -119,18 +155,22 @@ public class MainActivity extends AppCompatActivity {
                         "Sorry! Failed to capture image", Toast.LENGTH_SHORT)
                         .show();
             }
+        }else if(requestCode == OPEN_FILE_REQUEST_CODE && resultCode == RESULT_OK){
+            Uri uri;
+            if (data != null) {
+                uri = data.getData();
+                imageViewPhoto.setImageURI(uri);
+            }else{
+                imageViewPhoto.setImageResource(R.drawable.ic_image_black_24dp);
+            }
         }
     }
 
     private String saveCapturedImage() {
         //byte[] byte1=null;
+        Bitmap bitmap = null;
         String byte1 = "";
         try {
-            // hide video preview
-            //   videoPreview.setVisibility(View.GONE);
-            Log.e("Picture", "hi");
-            //imgPreview.setVisibility(View.VISIBLE);
-
             // bimatp factory
             BitmapFactory.Options options = new BitmapFactory.Options();
 
@@ -138,9 +178,8 @@ public class MainActivity extends AppCompatActivity {
             // images
             options.inSampleSize = 15;
 
-            final Bitmap bitmap = ShrinkBitmap(fileUri.getPath(), 400, 400);
+            bitmap = ShrinkBitmap(fileUri.getPath(), 400, 400);
             byte1 = getStringImage(bitmap);
-
             //   Bitmap bm = BitmapFactory.decodeByteArray(byte1, 0 ,byte1.length);
             //  imgPreview.setImageBitmap(bm);
         } catch (NullPointerException e) {
@@ -161,7 +200,7 @@ public class MainActivity extends AppCompatActivity {
 
         BitmapFactory.Options bmpFactoryOptions = new BitmapFactory.Options();
         bmpFactoryOptions.inJustDecodeBounds = true;
-        Bitmap bitmap = BitmapFactory.decodeFile(file, bmpFactoryOptions);
+        Bitmap bitmap;
 
         int heightRatio = (int) Math.ceil(bmpFactoryOptions.outHeight / (float) height);
         int widthRatio = (int) Math.ceil(bmpFactoryOptions.outWidth / (float) width);
