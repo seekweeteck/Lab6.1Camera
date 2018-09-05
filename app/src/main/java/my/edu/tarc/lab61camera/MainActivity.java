@@ -1,7 +1,9 @@
 package my.edu.tarc.lab61camera;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
@@ -9,7 +11,10 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.preference.PreferenceManager;
 import android.provider.MediaStore;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Base64;
 import android.util.Log;
@@ -30,18 +35,20 @@ import static android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO;
 
 public class MainActivity extends AppCompatActivity {
     private static final int CAMERA_CAPTURE_IMAGE_REQUEST_CODE = 1;
-    private static final String IMAGE_DIRECTORY_NAME = "my.edu.tarc.lab61camera";
+    private static final int WRITE_EXTERNAL_STORAGE_REQUEST_CODE = 2;
+    private static final String IMAGE_DIRECTORY_NAME = "lab61camera";
     private static final int OPEN_FILE_REQUEST_CODE = 2;
     private Uri fileUri;
     private String imageCaptured;
     private ImageView imageViewPhoto;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        imageViewPhoto = (ImageView)findViewById(R.id.imageViewPhoto);
-        Button buttonCamera = (Button) findViewById(R.id.buttonCamera);
+        imageViewPhoto = findViewById(R.id.imageViewPhoto);
+        Button buttonCamera = findViewById(R.id.buttonCamera);
         buttonCamera.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -49,25 +56,59 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        Button buttonFile = (Button) findViewById(R.id.buttonFile);
+        Button buttonFile = findViewById(R.id.buttonFile);
         buttonFile.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType("image/*");
-
-                if (isAvailable(getApplicationContext(), intent)) {
-                    startActivityForResult(intent, OPEN_FILE_REQUEST_CODE);
-                } else {
-                    Toast.makeText(getApplicationContext(), "No Intent available to handle action", Toast.LENGTH_SHORT).show();
-                }
-
+                performFileSearch();
             }
         });
+
+        SharedPreferences wmbPreference = PreferenceManager.getDefaultSharedPreferences(this);
+
+
+        boolean isFirstRun = wmbPreference.getBoolean("FIRSTRUN", true);
+
+        if (isFirstRun)
+        {
+            SharedPreferences.Editor editor = wmbPreference.edit();
+            editor.putBoolean("FIRSTRUN", false);
+            editor.commit();
+        }else{
+            createFolder(IMAGE_DIRECTORY_NAME);
+        }
     }
 
+    public void performFileSearch(){
+        // ACTION_OPEN_DOCUMENT is the intent to choose a file via the system's file
+        // browser.
+
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        // Filter to only show results that can be "opened"
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        // Filter to show only images
+        intent.setType("image/*");
+        startActivityForResult(intent, OPEN_FILE_REQUEST_CODE);
+    }
+
+    private void createFolder(String imageDirectoryName) {
+        String myfolder=Environment.getExternalStorageDirectory()+"/"+imageDirectoryName;
+        File f=new File(myfolder);
+        if(!f.exists())
+            if(!f.mkdir()){
+                Toast.makeText(this, myfolder+" can't be created.", Toast.LENGTH_SHORT).show();
+
+            }
+            else
+                Toast.makeText(this, myfolder+" can be created.", Toast.LENGTH_SHORT).show();
+        else
+            Toast.makeText(this, myfolder+" already exits.", Toast.LENGTH_SHORT).show();
+    }
+
+    // Retrieve all activities that can be performed for the given intent
     public static boolean isAvailable(Context ctx, Intent intent) {
+        //PackageManager Class for retrieving various kinds of information related to the application
+        // packages that are currently installed on the device
         final PackageManager mgr = ctx.getPackageManager();
         List<ResolveInfo> list =
                 mgr.queryIntentActivities(intent,
@@ -76,14 +117,49 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void captureImage() {
-        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if(checkPermission()){
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
 
-        fileUri = getOutputMediaFileUri(MEDIA_TYPE_IMAGE);
+            fileUri = getOutputMediaFileUri(MEDIA_TYPE_IMAGE);
 
-        intent.putExtra(MediaStore.EXTRA_OUTPUT, fileUri);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, fileUri);
 
-        // start the image capture Intent
-        startActivityForResult(intent, CAMERA_CAPTURE_IMAGE_REQUEST_CODE);
+            // start the image capture Intent
+            startActivityForResult(intent, CAMERA_CAPTURE_IMAGE_REQUEST_CODE);
+        }else{
+            Toast.makeText(this, "Write to external storage failed.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private boolean checkPermission() {
+        boolean agree = false;
+        // Here, thisActivity is the current activity
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            // Permission is not granted
+            // Should we show an explanation?
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+                // Show an explanation to the user *asynchronously* -- don't block
+                // this thread waiting for the user's response! After the user
+                // sees the explanation, try again to request the permission.
+            } else {
+                // No explanation needed; request the permission
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        WRITE_EXTERNAL_STORAGE_REQUEST_CODE);
+
+                // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
+                // app-defined int constant. The callback method gets the
+                // result of the request.
+            }
+        } else {
+            // Permission has already been granted
+            agree = true;
+        }
+        return agree;
     }
 
     /**
@@ -94,7 +170,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private static File getOutputMediaFile(int type) {
-
         // External sdcard location
         File mediaStorageDir = new File(
                 Environment
@@ -171,17 +246,15 @@ public class MainActivity extends AppCompatActivity {
         Bitmap bitmap = null;
         String byte1 = "";
         try {
-            // bimatp factory
+            // BitmapFactory creates Bitmap objects from various sources, including files, streams, and byte-arrays.
             BitmapFactory.Options options = new BitmapFactory.Options();
 
-            // downsizing image as it throws OutOfMemory Exception for larger
-            // images
+            // downsizing image as it throws OutOfMemory Exception for larger images
             options.inSampleSize = 15;
 
             bitmap = ShrinkBitmap(fileUri.getPath(), 400, 400);
             byte1 = getStringImage(bitmap);
-            //   Bitmap bm = BitmapFactory.decodeByteArray(byte1, 0 ,byte1.length);
-            //  imgPreview.setImageBitmap(bm);
+
         } catch (NullPointerException e) {
             e.printStackTrace();
         }
